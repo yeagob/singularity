@@ -201,6 +201,13 @@ export default class Sound extends EventEmitter {
     }
 
     postInit() {
+        console.log('Sound.postInit() called', {
+            debugExists: !!this.debug,
+            debugActive: this.debug?.active,
+            debugPanelExists: !!this.debug?.panel,
+            microphoneActive: this.microphoneActive
+        })
+
         // Setup debug UI after everything is initialized
         if (this.debug && this.debug.active && this.microphoneActive) {
             this._setupDebug()
@@ -208,9 +215,16 @@ export default class Sound extends EventEmitter {
     }
 
     _setupDebug() {
-        if (!this.debug.active || !this.debug.ui) return
+        console.log('Sound._setupDebug() called')
+        if (!this.debug.active || !this.debug.panel) {
+            console.warn('Cannot create debug panel:', {
+                debugActive: this.debug.active,
+                panelExists: !!this.debug.panel
+            })
+            return
+        }
 
-        const soundFolder = this.debug.ui.addFolder({
+        const soundFolder = this.debug.panel.addFolder({
             title: '🎤 Microphone Debug',
             expanded: true
         })
