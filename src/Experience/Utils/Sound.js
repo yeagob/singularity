@@ -92,10 +92,7 @@ export default class Sound extends EventEmitter {
             this.microphoneActive = true
             console.log('✅ Microphone input activated successfully!')
 
-            // Setup debug UI if available
-            if (this.debug && this.debug.active) {
-                this._setupDebug()
-            }
+            // Setup debug UI will be called later in postInit when debug UI is ready
 
         } catch (error) {
             console.error('❌ Could not access microphone:', error)
@@ -203,8 +200,15 @@ export default class Sound extends EventEmitter {
 
     }
 
+    postInit() {
+        // Setup debug UI after everything is initialized
+        if (this.debug && this.debug.active && this.microphoneActive) {
+            this._setupDebug()
+        }
+    }
+
     _setupDebug() {
-        if (!this.debug.active) return
+        if (!this.debug.active || !this.debug.ui) return
 
         const soundFolder = this.debug.ui.addFolder({
             title: '🎤 Microphone Debug',

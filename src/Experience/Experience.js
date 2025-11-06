@@ -120,6 +120,7 @@ export default class Experience extends EventEmitter {
         this.renderer.postInit()
         this.postProcess?.postInit()
         this.worlds?.postInit()
+        this.sound?.postInit()  // Initialize sound debug UI after debug is ready
         this.debug?.postInit()
     }
 
