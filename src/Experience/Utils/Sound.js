@@ -69,48 +69,86 @@ export default class Sound extends EventEmitter {
             return
 
         try {
-            // Create audio listener
-            this.listener = new THREE.AudioListener();
-
-            // Request microphone access
             console.log('Requesting microphone access...')
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+
+            // Request microphone - IGUAL que el código que funciona
+            this.mediaStream = await navigator.mediaDevices.getUserMedia({
+                audio: true,
+                video: false
+            })
+
             console.log('Microphone access granted!')
 
-            // Create audio context and source
-            const audioContext = this.listener.context
-            const source = audioContext.createMediaStreamSource(stream)
+            // Create audio context - IGUAL que el código que funciona
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)({
+                sampleRate: 16000
+            })
 
-            console.log('AudioContext state:', audioContext.state)
+            console.log('AudioContext state:', this.audioContext.state)
 
-            // Resume audio context if suspended (needs user interaction)
-            if (audioContext.state === 'suspended') {
-                console.log('⚠️ AudioContext is suspended. Will resume on user interaction...')
-
-                // Try to resume immediately
-                await audioContext.resume()
-                console.log('AudioContext state after resume:', audioContext.state)
+            // Resume if suspended - IGUAL que el código que funciona
+            if (this.audioContext.state === 'suspended') {
+                console.log('⚠️ AudioContext is suspended. Click anywhere on page to activate...')
+                // Will be resumed on click
             }
 
-            // Create audio object and connect to source
-            this.microphoneAudio = new THREE.Audio(this.listener)
-            this.microphoneAudio.setNodeSource(source)
-            this.microphoneAudio.setVolume(0) // IMPORTANTE: Silenciar para evitar feedback!
+            // Create source from stream - IGUAL que el código que funciona
+            this.sourceNode = this.audioContext.createMediaStreamSource(this.mediaStream)
 
-            // Create analyser
-            this.microphoneAnalyser = new THREE.AudioAnalyser(this.microphoneAudio, this.fftSize)
+            // Create gain node - IGUAL que el código que funciona
+            this.inputNode = this.audioContext.createGain()
+
+            // Create analyser - ESTO ES LO QUE AGREGAMOS NOSOTROS
+            this.analyserNode = this.audioContext.createAnalyser()
+            this.analyserNode.fftSize = this.fftSize
+            this.analyserNode.smoothingTimeConstant = 0.8
+
+            // Create script processor (helps keep audio flowing) - IGUAL que el código que funciona
+            const bufferSize = 256
+            this.scriptProcessorNode = this.audioContext.createScriptProcessor(bufferSize, 1, 1)
+            this.scriptProcessorNode.onaudioprocess = () => {
+                // Keep audio processing active
+            }
+
+            // CADENA DE CONEXIÓN - Similar al código que funciona pero con analyser:
+            // mediaStream → sourceNode → inputNode → analyserNode → scriptProcessor → destination
+            this.sourceNode.connect(this.inputNode)
+            this.inputNode.connect(this.analyserNode)
+            this.analyserNode.connect(this.scriptProcessorNode)
+            this.scriptProcessorNode.connect(this.audioContext.destination)
 
             this.microphoneActive = true
-            this.audioContext = audioContext
-            console.log('✅ Microphone input activated successfully!')
-            console.log('Analyser created with FFT size:', this.fftSize)
 
-            // Setup debug UI will be called later in postInit when debug UI is ready
+            console.log('✅ Microphone connected successfully!')
+            console.log('Audio chain: source → gain → analyser → processor → destination')
+            console.log('Analyser FFT size:', this.analyserNode.fftSize)
+            console.log('Analyser frequency bin count:', this.analyserNode.frequencyBinCount)
+
+            // Setup click listener to resume audio context
+            this.setupClickToResume()
 
         } catch (error) {
             console.error('❌ Could not access microphone:', error)
             this.microphoneActive = false
         }
+    }
+
+    setupClickToResume() {
+        const resumeAudio = async () => {
+            if (this.audioContext && this.audioContext.state === 'suspended') {
+                try {
+                    await this.audioContext.resume()
+                    console.log('✅ AudioContext resumed! State:', this.audioContext.state)
+                } catch (err) {
+                    console.error('Failed to resume AudioContext:', err)
+                }
+            }
+        }
+
+        // Resume on any click
+        document.addEventListener('click', resumeAudio, { once: true })
+        // Also try on any key press
+        document.addEventListener('keydown', resumeAudio, { once: true })
     }
 
     createSounds() {
@@ -184,16 +222,10 @@ export default class Sound extends EventEmitter {
         if( this.isMobile )
             return
 
-        // Check AudioContext state
-        if (this.audioContext && this.audioContext.state === 'suspended') {
-            // Try to resume (might need user interaction)
-            this.audioContext.resume().catch(() => {})
-        }
-
-        // Update microphone audio data
-        if( this.microphoneActive && this.microphoneAnalyser ) {
-            this.microphoneAnalyser.analyser.getByteFrequencyData( this.byteFrequencyData )
-            this.microphoneAnalyser.analyser.getFloatTimeDomainData( this.floatTimeDomainData )
+        // Update microphone audio data usando analyserNode directamente
+        if( this.microphoneActive && this.analyserNode ) {
+            this.analyserNode.getByteFrequencyData( this.byteFrequencyData )
+            this.analyserNode.getFloatTimeDomainData( this.floatTimeDomainData )
 
             this.volume = this.getVolume()
             this.levels = this.getLevels()
@@ -206,18 +238,53 @@ export default class Sound extends EventEmitter {
                 this.lastDebugLog = Date.now()
             }
         }
-
-        // this.backgroundSoundAnalyser.analyser.getByteFrequencyData( this.byteFrequencyData );
-        // this.backgroundSoundAnalyser.analyser.getFloatTimeDomainData( this.floatTimeDomainData )
-        //
-        // this.volume = this.getVolume()
-        //this.levels = this.getLevels()
-
-        //this.uniforms.tAudioDataBackground.value.needsUpdate = true;
     }
 
     resize() {
 
+    }
+
+    destroy() {
+        console.log('Sound cleanup: Disconnecting audio resources...')
+
+        this.microphoneActive = false
+
+        if (this.scriptProcessorNode) {
+            this.scriptProcessorNode.disconnect()
+            this.scriptProcessorNode.onaudioprocess = null
+            this.scriptProcessorNode = null
+        }
+
+        if (this.analyserNode) {
+            this.analyserNode.disconnect()
+            this.analyserNode = null
+        }
+
+        if (this.inputNode) {
+            this.inputNode.disconnect()
+            this.inputNode = null
+        }
+
+        if (this.sourceNode) {
+            this.sourceNode.disconnect()
+            this.sourceNode = null
+        }
+
+        if (this.mediaStream) {
+            this.mediaStream.getTracks().forEach(track => {
+                track.stop()
+                console.log('Stopped media track:', track.kind)
+            })
+            this.mediaStream = null
+        }
+
+        if (this.audioContext && this.audioContext.state !== 'closed') {
+            this.audioContext.close().then(() => {
+                console.log('AudioContext closed.')
+            }).catch(err => {
+                console.error('Error closing AudioContext:', err)
+            })
+        }
     }
 
     postInit() {
@@ -326,11 +393,12 @@ export default class Sound extends EventEmitter {
             console.log('AudioContext state:', this.audioContext?.state)
             console.log('Current Volume:', this.volume)
             console.log('Current Levels:', this.levels)
-            console.log('Analyser exists:', !!this.microphoneAnalyser)
-            if (this.microphoneAnalyser) {
-                console.log('FFT Size:', this.microphoneAnalyser.analyser.fftSize)
-                console.log('Frequency Bin 0-10:', Array.from(this.byteFrequencyData.slice(0, 10)))
-                console.log('Time Domain Sample:', Array.from(this.floatTimeDomainData.slice(0, 10)))
+            console.log('Analyser exists:', !!this.analyserNode)
+            if (this.analyserNode) {
+                console.log('FFT Size:', this.analyserNode.fftSize)
+                console.log('Frequency Bin Count:', this.analyserNode.frequencyBinCount)
+                console.log('Frequency Bin 0-20:', Array.from(this.byteFrequencyData.slice(0, 20)))
+                console.log('Time Domain Sample 0-20:', Array.from(this.floatTimeDomainData.slice(0, 20)))
             }
         })
 
