@@ -28,6 +28,7 @@ export default class Sound extends EventEmitter {
         this.isMobile = this.experience.isMobile
 
         this.soundsCreated = false;
+        this.microphoneActive = false;
 
         this.fftSize = 128
 
@@ -35,13 +36,14 @@ export default class Sound extends EventEmitter {
         this.byteFrequencyData = new Uint8Array( this.fftSize )
 
         this.volume = 0
-
+        this.levels = new Array(8).fill(0)
 
         this.uniforms = {
             tAudioDataBackground: uniform( 0 )
         }
 
         //this.createSounds()
+        this.setupMicrophone()
     }
 
     isTabVisible() {
@@ -55,6 +57,37 @@ export default class Sound extends EventEmitter {
         } else {
             this.backgroundSound.pause();
             this.listener.setMasterVolume( 0 )
+        }
+    }
+
+    async setupMicrophone() {
+        if( this.isMobile )
+            return
+
+        try {
+            // Create audio listener
+            this.listener = new THREE.AudioListener();
+
+            // Request microphone access
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+
+            // Create audio context and source
+            const audioContext = this.listener.context
+            const source = audioContext.createMediaStreamSource(stream)
+
+            // Create audio object and connect to source
+            this.microphoneAudio = new THREE.Audio(this.listener)
+            this.microphoneAudio.setNodeSource(source)
+
+            // Create analyser
+            this.microphoneAnalyser = new THREE.AudioAnalyser(this.microphoneAudio, this.fftSize)
+
+            this.microphoneActive = true
+            console.log('Microphone input activated')
+
+        } catch (error) {
+            console.warn('Could not access microphone:', error)
+            this.microphoneActive = false
         }
     }
 
@@ -128,6 +161,15 @@ export default class Sound extends EventEmitter {
     update() {
         if( this.isMobile )
             return
+
+        // Update microphone audio data
+        if( this.microphoneActive && this.microphoneAnalyser ) {
+            this.microphoneAnalyser.analyser.getByteFrequencyData( this.byteFrequencyData )
+            this.microphoneAnalyser.analyser.getFloatTimeDomainData( this.floatTimeDomainData )
+
+            this.volume = this.getVolume()
+            this.levels = this.getLevels()
+        }
 
         // this.backgroundSoundAnalyser.analyser.getByteFrequencyData( this.byteFrequencyData );
         // this.backgroundSoundAnalyser.analyser.getFloatTimeDomainData( this.floatTimeDomainData )

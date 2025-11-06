@@ -29,6 +29,7 @@ export default class BlackHole extends Model {
     time = experience.time
     renderer = experience.renderer.instance
     resources = experience.resources
+    sound = experience.sound
     container = new THREE.Group();
 
     uniforms = {
@@ -58,6 +59,15 @@ export default class BlackHole extends Model {
         test2: uniform( float( 0 ) ),
         test3: uniform( float( 1 ) ),
         test4: uniform( float( 1 ) )
+    }
+
+    // Base values for audio modulation
+    baseValues = {
+        stepSize: 0.0071,
+        noiseFactor: 0.01,
+        power: 0.3,
+        width: 0.03,
+        rampEmission: 2.0
     }
 
     constructor( parameters = {} ) {
@@ -372,8 +382,31 @@ export default class BlackHole extends Model {
     }
 
     update( deltaTime ) {
-        //this.cube2.rotation.y += deltaTime * 20
-        //this.cube.rotation.y += deltaTime * 30
+        // Audio-reactive deformation
+        if (this.sound && this.sound.microphoneActive) {
+            const volume = this.sound.volume
+            const levels = this.sound.levels
+
+            // Low frequencies (bass) - affect power (gravity strength)
+            const bass = (levels[0] + levels[1]) / 2
+            this.uniforms.power.value = this.baseValues.power + bass * 0.5
+
+            // Mid frequencies - affect noise factor
+            const mid = (levels[2] + levels[3] + levels[4]) / 3
+            this.uniforms.noiseFactor.value = this.baseValues.noiseFactor + mid * 0.03
+
+            // High frequencies - affect width
+            const high = (levels[5] + levels[6] + levels[7]) / 3
+            this.uniforms.width.value = this.baseValues.width + high * 0.08
+
+            // Overall volume - affect step size and emission
+            this.uniforms.stepSize.value = this.baseValues.stepSize + volume * 0.002
+            this.uniforms.rampEmission.value = this.baseValues.rampEmission + volume * 3.0
+
+            // Color ramp position modulation for dynamic color shifts
+            this.uniforms.rampPos1.value = 0.050 + bass * 0.1
+            this.uniforms.rampPos2.value = 0.425 + mid * 0.2
+        }
     }
 
 }
