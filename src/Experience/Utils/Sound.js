@@ -84,6 +84,7 @@ export default class Sound extends EventEmitter {
             // Create audio object and connect to source
             this.microphoneAudio = new THREE.Audio(this.listener)
             this.microphoneAudio.setNodeSource(source)
+            this.microphoneAudio.setVolume(0) // IMPORTANTE: Silenciar para evitar feedback!
 
             // Create analyser
             this.microphoneAnalyser = new THREE.AudioAnalyser(this.microphoneAudio, this.fftSize)
@@ -206,7 +207,7 @@ export default class Sound extends EventEmitter {
         if (!this.debug.active) return
 
         const soundFolder = this.debug.ui.addFolder({
-            title: 'Microphone Debug',
+            title: '🎤 Microphone Debug',
             expanded: true
         })
 
@@ -219,40 +220,61 @@ export default class Sound extends EventEmitter {
         }
 
         soundFolder.addBinding(debugData, 'micActive', {
-            label: 'Microphone Active',
+            label: '✅ Microphone Active',
             readonly: true
         })
 
         soundFolder.addBinding(debugData, 'volume', {
-            label: 'Volume',
+            label: '🔊 Volume',
             readonly: true,
+            min: 0,
+            max: 1,
+            view: 'graph',
             min: 0,
             max: 1
         })
 
         soundFolder.addBinding(debugData, 'bass', {
-            label: 'Bass (Low Freq)',
+            label: '🎵 Bass (Low Freq)',
             readonly: true,
             min: 0,
-            max: 1
+            max: 1,
+            view: 'graph'
         })
 
         soundFolder.addBinding(debugData, 'mid', {
-            label: 'Mid Freq',
+            label: '🎼 Mid Freq',
             readonly: true,
             min: 0,
-            max: 1
+            max: 1,
+            view: 'graph'
         })
 
         soundFolder.addBinding(debugData, 'high', {
-            label: 'High Freq',
+            label: '🎹 High Freq',
             readonly: true,
             min: 0,
-            max: 1
+            max: 1,
+            view: 'graph'
         })
 
         soundFolder.addBinding(this, 'debugLogEnabled', {
-            label: 'Console Log'
+            label: '📝 Console Log'
+        })
+
+        // Add a button to test microphone
+        soundFolder.addButton({
+            title: '🧪 Test Audio (Click & Speak)'
+        }).on('click', () => {
+            console.log('=== AUDIO TEST ===')
+            console.log('Microphone Active:', this.microphoneActive)
+            console.log('Current Volume:', this.volume)
+            console.log('Current Levels:', this.levels)
+            console.log('Analyser exists:', !!this.microphoneAnalyser)
+            if (this.microphoneAnalyser) {
+                console.log('FFT Size:', this.microphoneAnalyser.analyser.fftSize)
+                console.log('Frequency Data:', this.byteFrequencyData)
+            }
         })
 
         // Update debug values
@@ -265,6 +287,8 @@ export default class Sound extends EventEmitter {
                 debugData.micActive = this.microphoneActive
             }
         })
+
+        console.log('🎤 Debug panel created. Speak into microphone to see values change.')
     }
 
 }

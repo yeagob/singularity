@@ -73,13 +73,13 @@ export default class BlackHole extends Model {
     // Audio modulation multipliers (adjustable in debug)
     audioModifiers = {
         enabled: true,
-        bassMultiplier: 0.5,      // Affects power (gravity)
-        midMultiplier: 0.03,      // Affects noise factor
-        highMultiplier: 0.08,     // Affects width
-        volumeStepMultiplier: 0.002,     // Affects step size
-        volumeEmissionMultiplier: 3.0,   // Affects emission
-        rampPos1Multiplier: 0.1,  // Color ramp position 1
-        rampPos2Multiplier: 0.2   // Color ramp position 2
+        bassMultiplier: 2.0,      // Affects power (gravity) - AUMENTADO para más efecto
+        midMultiplier: 0.08,      // Affects noise factor - AUMENTADO
+        highMultiplier: 0.15,     // Affects width - AUMENTADO
+        volumeStepMultiplier: 0.005,     // Affects step size - AUMENTADO
+        volumeEmissionMultiplier: 8.0,   // Affects emission - AUMENTADO
+        rampPos1Multiplier: 0.3,  // Color ramp position 1 - AUMENTADO
+        rampPos2Multiplier: 0.4   // Color ramp position 2 - AUMENTADO
     }
 
     constructor( parameters = {} ) {
@@ -460,23 +460,39 @@ export default class BlackHole extends Model {
 
             // Low frequencies (bass) - affect power (gravity strength)
             const bass = (levels[0] + levels[1]) / 2
-            this.uniforms.power.value = this.baseValues.power + bass * this.audioModifiers.bassMultiplier
+            const newPower = this.baseValues.power + bass * this.audioModifiers.bassMultiplier
+            this.uniforms.power.value = newPower
 
             // Mid frequencies - affect noise factor
             const mid = (levels[2] + levels[3] + levels[4]) / 3
-            this.uniforms.noiseFactor.value = this.baseValues.noiseFactor + mid * this.audioModifiers.midMultiplier
+            const newNoise = this.baseValues.noiseFactor + mid * this.audioModifiers.midMultiplier
+            this.uniforms.noiseFactor.value = newNoise
 
             // High frequencies - affect width
             const high = (levels[5] + levels[6] + levels[7]) / 3
-            this.uniforms.width.value = this.baseValues.width + high * this.audioModifiers.highMultiplier
+            const newWidth = this.baseValues.width + high * this.audioModifiers.highMultiplier
+            this.uniforms.width.value = newWidth
 
             // Overall volume - affect step size and emission
-            this.uniforms.stepSize.value = this.baseValues.stepSize + volume * this.audioModifiers.volumeStepMultiplier
-            this.uniforms.rampEmission.value = this.baseValues.rampEmission + volume * this.audioModifiers.volumeEmissionMultiplier
+            const newStepSize = this.baseValues.stepSize + volume * this.audioModifiers.volumeStepMultiplier
+            this.uniforms.stepSize.value = newStepSize
+
+            const newEmission = this.baseValues.rampEmission + volume * this.audioModifiers.volumeEmissionMultiplier
+            this.uniforms.rampEmission.value = newEmission
 
             // Color ramp position modulation for dynamic color shifts
             this.uniforms.rampPos1.value = 0.050 + bass * this.audioModifiers.rampPos1Multiplier
             this.uniforms.rampPos2.value = 0.425 + mid * this.audioModifiers.rampPos2Multiplier
+
+            // Debug log (uncomment to see values)
+            // if (volume > 0.1) {
+            //     console.log('🎨 Audio affecting visuals:', {
+            //         volume: volume.toFixed(3),
+            //         bass: bass.toFixed(3),
+            //         power: newPower.toFixed(3),
+            //         emission: newEmission.toFixed(2)
+            //     })
+            // }
         } else {
             // Reset to base values when audio is disabled
             this.uniforms.power.value = this.baseValues.power

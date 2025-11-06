@@ -142,6 +142,7 @@ export default class Experience extends EventEmitter {
     }
 
     async update() {
+        this.sound?.update()  // IMPORTANTE: Actualizar el análisis de audio
         this.worlds.update( this.time.delta )
 
         this.render()
