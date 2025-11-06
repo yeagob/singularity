@@ -38,6 +38,10 @@ export default class Sound extends EventEmitter {
         this.volume = 0
         this.levels = new Array(8).fill(0)
 
+        // Debug controls
+        this.debugLogEnabled = false
+        this.lastDebugLog = 0
+
         this.uniforms = {
             tAudioDataBackground: uniform( 0 )
         }
@@ -69,7 +73,9 @@ export default class Sound extends EventEmitter {
             this.listener = new THREE.AudioListener();
 
             // Request microphone access
+            console.log('Requesting microphone access...')
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+            console.log('Microphone access granted!')
 
             // Create audio context and source
             const audioContext = this.listener.context
@@ -83,10 +89,15 @@ export default class Sound extends EventEmitter {
             this.microphoneAnalyser = new THREE.AudioAnalyser(this.microphoneAudio, this.fftSize)
 
             this.microphoneActive = true
-            console.log('Microphone input activated')
+            console.log('✅ Microphone input activated successfully!')
+
+            // Setup debug UI if available
+            if (this.debug && this.debug.active) {
+                this._setupDebug()
+            }
 
         } catch (error) {
-            console.warn('Could not access microphone:', error)
+            console.error('❌ Could not access microphone:', error)
             this.microphoneActive = false
         }
     }
@@ -169,6 +180,13 @@ export default class Sound extends EventEmitter {
 
             this.volume = this.getVolume()
             this.levels = this.getLevels()
+
+            // Debug: log volume and levels periodically
+            if (this.debugLogEnabled && Date.now() - this.lastDebugLog > 500) {
+                console.log('🎤 Volume:', this.volume.toFixed(3),
+                           '| Levels:', this.levels.map(l => l.toFixed(2)).join(', '))
+                this.lastDebugLog = Date.now()
+            }
         }
 
         // this.backgroundSoundAnalyser.analyser.getByteFrequencyData( this.byteFrequencyData );
@@ -182,6 +200,71 @@ export default class Sound extends EventEmitter {
 
     resize() {
 
+    }
+
+    _setupDebug() {
+        if (!this.debug.active) return
+
+        const soundFolder = this.debug.ui.addFolder({
+            title: 'Microphone Debug',
+            expanded: true
+        })
+
+        const debugData = {
+            volume: 0,
+            bass: 0,
+            mid: 0,
+            high: 0,
+            micActive: this.microphoneActive
+        }
+
+        soundFolder.addBinding(debugData, 'micActive', {
+            label: 'Microphone Active',
+            readonly: true
+        })
+
+        soundFolder.addBinding(debugData, 'volume', {
+            label: 'Volume',
+            readonly: true,
+            min: 0,
+            max: 1
+        })
+
+        soundFolder.addBinding(debugData, 'bass', {
+            label: 'Bass (Low Freq)',
+            readonly: true,
+            min: 0,
+            max: 1
+        })
+
+        soundFolder.addBinding(debugData, 'mid', {
+            label: 'Mid Freq',
+            readonly: true,
+            min: 0,
+            max: 1
+        })
+
+        soundFolder.addBinding(debugData, 'high', {
+            label: 'High Freq',
+            readonly: true,
+            min: 0,
+            max: 1
+        })
+
+        soundFolder.addBinding(this, 'debugLogEnabled', {
+            label: 'Console Log'
+        })
+
+        // Update debug values
+        this.experience.time.on('tick', () => {
+            if (this.microphoneActive) {
+                debugData.volume = this.volume
+                debugData.bass = (this.levels[0] + this.levels[1]) / 2
+                debugData.mid = (this.levels[2] + this.levels[3] + this.levels[4]) / 3
+                debugData.high = (this.levels[5] + this.levels[6] + this.levels[7]) / 3
+                debugData.micActive = this.microphoneActive
+            }
+        })
     }
 
 }

@@ -70,6 +70,18 @@ export default class BlackHole extends Model {
         rampEmission: 2.0
     }
 
+    // Audio modulation multipliers (adjustable in debug)
+    audioModifiers = {
+        enabled: true,
+        bassMultiplier: 0.5,      // Affects power (gravity)
+        midMultiplier: 0.03,      // Affects noise factor
+        highMultiplier: 0.08,     // Affects width
+        volumeStepMultiplier: 0.002,     // Affects step size
+        volumeEmissionMultiplier: 3.0,   // Affects emission
+        rampPos1Multiplier: 0.1,  // Color ramp position 1
+        rampPos2Multiplier: 0.2   // Color ramp position 2
+    }
+
     constructor( parameters = {} ) {
         super()
 
@@ -280,9 +292,68 @@ export default class BlackHole extends Model {
 
         const test = uniform( 0 )
 
-        const exampleFolder = this.world.debugFolder.addFolder( {
-            title: 'depth',
+        // Audio Modifiers Folder
+        const audioFolder = this.world.debugFolder.addFolder({
+            title: 'Audio Modifiers',
             expanded: true
+        })
+
+        audioFolder.addBinding(this.audioModifiers, 'enabled', {
+            label: 'Audio Reactive Enabled'
+        })
+
+        audioFolder.addBinding(this.audioModifiers, 'bassMultiplier', {
+            label: 'Bass → Power',
+            min: 0,
+            max: 2,
+            step: 0.01
+        })
+
+        audioFolder.addBinding(this.audioModifiers, 'midMultiplier', {
+            label: 'Mid → Noise Factor',
+            min: 0,
+            max: 0.1,
+            step: 0.001
+        })
+
+        audioFolder.addBinding(this.audioModifiers, 'highMultiplier', {
+            label: 'High → Width',
+            min: 0,
+            max: 0.2,
+            step: 0.01
+        })
+
+        audioFolder.addBinding(this.audioModifiers, 'volumeStepMultiplier', {
+            label: 'Volume → Step Size',
+            min: 0,
+            max: 0.01,
+            step: 0.0001
+        })
+
+        audioFolder.addBinding(this.audioModifiers, 'volumeEmissionMultiplier', {
+            label: 'Volume → Emission',
+            min: 0,
+            max: 10,
+            step: 0.1
+        })
+
+        audioFolder.addBinding(this.audioModifiers, 'rampPos1Multiplier', {
+            label: 'Bass → Color Pos 1',
+            min: 0,
+            max: 0.5,
+            step: 0.01
+        })
+
+        audioFolder.addBinding(this.audioModifiers, 'rampPos2Multiplier', {
+            label: 'Mid → Color Pos 2',
+            min: 0,
+            max: 0.5,
+            step: 0.01
+        })
+
+        const exampleFolder = this.world.debugFolder.addFolder( {
+            title: 'Depth & Visual',
+            expanded: false
         } )
 
         exampleFolder.addBinding( test, 'value', {
@@ -383,29 +454,38 @@ export default class BlackHole extends Model {
 
     update( deltaTime ) {
         // Audio-reactive deformation
-        if (this.sound && this.sound.microphoneActive) {
+        if (this.audioModifiers.enabled && this.sound && this.sound.microphoneActive) {
             const volume = this.sound.volume
             const levels = this.sound.levels
 
             // Low frequencies (bass) - affect power (gravity strength)
             const bass = (levels[0] + levels[1]) / 2
-            this.uniforms.power.value = this.baseValues.power + bass * 0.5
+            this.uniforms.power.value = this.baseValues.power + bass * this.audioModifiers.bassMultiplier
 
             // Mid frequencies - affect noise factor
             const mid = (levels[2] + levels[3] + levels[4]) / 3
-            this.uniforms.noiseFactor.value = this.baseValues.noiseFactor + mid * 0.03
+            this.uniforms.noiseFactor.value = this.baseValues.noiseFactor + mid * this.audioModifiers.midMultiplier
 
             // High frequencies - affect width
             const high = (levels[5] + levels[6] + levels[7]) / 3
-            this.uniforms.width.value = this.baseValues.width + high * 0.08
+            this.uniforms.width.value = this.baseValues.width + high * this.audioModifiers.highMultiplier
 
             // Overall volume - affect step size and emission
-            this.uniforms.stepSize.value = this.baseValues.stepSize + volume * 0.002
-            this.uniforms.rampEmission.value = this.baseValues.rampEmission + volume * 3.0
+            this.uniforms.stepSize.value = this.baseValues.stepSize + volume * this.audioModifiers.volumeStepMultiplier
+            this.uniforms.rampEmission.value = this.baseValues.rampEmission + volume * this.audioModifiers.volumeEmissionMultiplier
 
             // Color ramp position modulation for dynamic color shifts
-            this.uniforms.rampPos1.value = 0.050 + bass * 0.1
-            this.uniforms.rampPos2.value = 0.425 + mid * 0.2
+            this.uniforms.rampPos1.value = 0.050 + bass * this.audioModifiers.rampPos1Multiplier
+            this.uniforms.rampPos2.value = 0.425 + mid * this.audioModifiers.rampPos2Multiplier
+        } else {
+            // Reset to base values when audio is disabled
+            this.uniforms.power.value = this.baseValues.power
+            this.uniforms.noiseFactor.value = this.baseValues.noiseFactor
+            this.uniforms.width.value = this.baseValues.width
+            this.uniforms.stepSize.value = this.baseValues.stepSize
+            this.uniforms.rampEmission.value = this.baseValues.rampEmission
+            this.uniforms.rampPos1.value = 0.050
+            this.uniforms.rampPos2.value = 0.425
         }
     }
 
