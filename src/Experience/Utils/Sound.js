@@ -81,6 +81,17 @@ export default class Sound extends EventEmitter {
             const audioContext = this.listener.context
             const source = audioContext.createMediaStreamSource(stream)
 
+            console.log('AudioContext state:', audioContext.state)
+
+            // Resume audio context if suspended (needs user interaction)
+            if (audioContext.state === 'suspended') {
+                console.log('⚠️ AudioContext is suspended. Will resume on user interaction...')
+
+                // Try to resume immediately
+                await audioContext.resume()
+                console.log('AudioContext state after resume:', audioContext.state)
+            }
+
             // Create audio object and connect to source
             this.microphoneAudio = new THREE.Audio(this.listener)
             this.microphoneAudio.setNodeSource(source)
@@ -90,7 +101,9 @@ export default class Sound extends EventEmitter {
             this.microphoneAnalyser = new THREE.AudioAnalyser(this.microphoneAudio, this.fftSize)
 
             this.microphoneActive = true
+            this.audioContext = audioContext
             console.log('✅ Microphone input activated successfully!')
+            console.log('Analyser created with FFT size:', this.fftSize)
 
             // Setup debug UI will be called later in postInit when debug UI is ready
 
@@ -171,6 +184,12 @@ export default class Sound extends EventEmitter {
         if( this.isMobile )
             return
 
+        // Check AudioContext state
+        if (this.audioContext && this.audioContext.state === 'suspended') {
+            // Try to resume (might need user interaction)
+            this.audioContext.resume().catch(() => {})
+        }
+
         // Update microphone audio data
         if( this.microphoneActive && this.microphoneAnalyser ) {
             this.microphoneAnalyser.analyser.getByteFrequencyData( this.byteFrequencyData )
@@ -182,7 +201,8 @@ export default class Sound extends EventEmitter {
             // Debug: log volume and levels periodically
             if (this.debugLogEnabled && Date.now() - this.lastDebugLog > 500) {
                 console.log('🎤 Volume:', this.volume.toFixed(3),
-                           '| Levels:', this.levels.map(l => l.toFixed(2)).join(', '))
+                           '| Levels:', this.levels.map(l => l.toFixed(2)).join(', '),
+                           '| AudioContext:', this.audioContext?.state)
                 this.lastDebugLog = Date.now()
             }
         }
@@ -280,18 +300,37 @@ export default class Sound extends EventEmitter {
             label: '📝 Console Log'
         })
 
+        // Add a button to activate AudioContext
+        soundFolder.addButton({
+            title: '▶️ ACTIVATE AUDIO (Click if no sound)'
+        }).on('click', async () => {
+            console.log('=== ACTIVATING AUDIO ===')
+            if (this.audioContext) {
+                console.log('AudioContext state before:', this.audioContext.state)
+                if (this.audioContext.state === 'suspended') {
+                    await this.audioContext.resume()
+                    console.log('AudioContext state after:', this.audioContext.state)
+                    console.log('✅ Audio activated! Try speaking now.')
+                } else {
+                    console.log('ℹ️ AudioContext already running:', this.audioContext.state)
+                }
+            }
+        })
+
         // Add a button to test microphone
         soundFolder.addButton({
-            title: '🧪 Test Audio (Click & Speak)'
+            title: '🧪 Test Audio Data'
         }).on('click', () => {
             console.log('=== AUDIO TEST ===')
             console.log('Microphone Active:', this.microphoneActive)
+            console.log('AudioContext state:', this.audioContext?.state)
             console.log('Current Volume:', this.volume)
             console.log('Current Levels:', this.levels)
             console.log('Analyser exists:', !!this.microphoneAnalyser)
             if (this.microphoneAnalyser) {
                 console.log('FFT Size:', this.microphoneAnalyser.analyser.fftSize)
-                console.log('Frequency Data:', this.byteFrequencyData)
+                console.log('Frequency Bin 0-10:', Array.from(this.byteFrequencyData.slice(0, 10)))
+                console.log('Time Domain Sample:', Array.from(this.floatTimeDomainData.slice(0, 10)))
             }
         })
 
