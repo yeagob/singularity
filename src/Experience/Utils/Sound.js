@@ -38,6 +38,11 @@ export default class Sound extends EventEmitter {
         this.volume = 0
         this.levels = new Array(8).fill(0)
 
+        // Audio source mode: 'microphone' or 'music'
+        this.audioMode = 'microphone'
+        this.musicLoaded = false
+        this.isPlaying = false
+
         // Debug controls
         this.debugLogEnabled = false
         this.lastDebugLog = 0
@@ -149,6 +154,169 @@ export default class Sound extends EventEmitter {
         document.addEventListener('click', resumeAudio, { once: true })
         // Also try on any key press
         document.addEventListener('keydown', resumeAudio, { once: true })
+    }
+
+    async loadMusicFile(file) {
+        try {
+            console.log('Loading music file:', file.name)
+
+            // Create AudioContext if not exists
+            if (!this.audioContext) {
+                this.audioContext = new (window.AudioContext || window.webkitAudioContext)({
+                    sampleRate: 44100 // Higher sample rate for music
+                })
+            }
+
+            // Resume if suspended
+            if (this.audioContext.state === 'suspended') {
+                await this.audioContext.resume()
+            }
+
+            // Read file as ArrayBuffer
+            const arrayBuffer = await file.arrayBuffer()
+
+            // Decode audio data
+            console.log('Decoding audio file...')
+            const audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer)
+            console.log('✅ Audio decoded successfully!')
+            console.log('Duration:', audioBuffer.duration.toFixed(2), 'seconds')
+            console.log('Sample Rate:', audioBuffer.sampleRate)
+            console.log('Channels:', audioBuffer.numberOfChannels)
+
+            this.audioBuffer = audioBuffer
+            this.musicLoaded = true
+
+            return true
+        } catch (error) {
+            console.error('❌ Error loading music file:', error)
+            return false
+        }
+    }
+
+    setupMusicPlayback() {
+        if (!this.audioBuffer || !this.audioContext) {
+            console.error('No audio buffer loaded')
+            return
+        }
+
+        try {
+            // Disconnect existing music nodes if any
+            if (this.musicSourceNode) {
+                this.musicSourceNode.stop()
+                this.musicSourceNode.disconnect()
+            }
+
+            // Create buffer source
+            this.musicSourceNode = this.audioContext.createBufferSource()
+            this.musicSourceNode.buffer = this.audioBuffer
+            this.musicSourceNode.loop = true // Loop the song
+
+            // Create gain node for music
+            if (!this.musicGainNode) {
+                this.musicGainNode = this.audioContext.createGain()
+                this.musicGainNode.gain.value = 0.5 // 50% volume
+            }
+
+            // Create analyser if not exists
+            if (!this.analyserNode) {
+                this.analyserNode = this.audioContext.createAnalyser()
+                this.analyserNode.fftSize = this.fftSize
+                this.analyserNode.smoothingTimeConstant = 0.8
+            }
+
+            // Connect: source → gain → analyser → destination
+            this.musicSourceNode.connect(this.musicGainNode)
+            this.musicGainNode.connect(this.analyserNode)
+            this.analyserNode.connect(this.audioContext.destination)
+
+            console.log('✅ Music playback setup complete')
+            console.log('Audio chain: musicSource → gain → analyser → destination')
+
+        } catch (error) {
+            console.error('❌ Error setting up music playback:', error)
+        }
+    }
+
+    playMusic() {
+        if (!this.musicLoaded) {
+            console.warn('No music loaded')
+            return
+        }
+
+        if (this.audioContext.state === 'suspended') {
+            this.audioContext.resume()
+        }
+
+        this.setupMusicPlayback()
+        this.musicSourceNode.start(0)
+        this.isPlaying = true
+
+        console.log('▶️ Playing music...')
+    }
+
+    pauseMusic() {
+        if (this.musicSourceNode && this.isPlaying) {
+            this.musicSourceNode.stop()
+            this.isPlaying = false
+            console.log('⏸️ Music paused')
+        }
+    }
+
+    switchToMicrophone() {
+        console.log('Switching to microphone...')
+
+        // Pause music if playing
+        if (this.isPlaying) {
+            this.pauseMusic()
+        }
+
+        // Disconnect music chain if exists
+        if (this.musicGainNode) {
+            this.musicGainNode.disconnect()
+        }
+
+        // Reconnect microphone chain
+        if (this.inputNode && this.analyserNode) {
+            this.inputNode.disconnect()
+            this.inputNode.connect(this.analyserNode)
+
+            if (!this.scriptProcessorNode) {
+                this.scriptProcessorNode = this.audioContext.createScriptProcessor(256, 1, 1)
+                this.scriptProcessorNode.onaudioprocess = () => {}
+            }
+
+            this.analyserNode.connect(this.scriptProcessorNode)
+            this.scriptProcessorNode.connect(this.audioContext.destination)
+        }
+
+        this.audioMode = 'microphone'
+        console.log('✅ Switched to microphone')
+    }
+
+    switchToMusic() {
+        console.log('Switching to music...')
+
+        if (!this.musicLoaded) {
+            console.warn('No music loaded. Please load a file first.')
+            return
+        }
+
+        // Disconnect microphone chain
+        if (this.inputNode) {
+            this.inputNode.disconnect()
+        }
+        if (this.scriptProcessorNode) {
+            this.scriptProcessorNode.disconnect()
+        }
+
+        // Setup and play music
+        this.audioMode = 'music'
+
+        if (!this.isPlaying) {
+            this.playMusic()
+        }
+
+        console.log('✅ Switched to music')
     }
 
     createSounds() {
@@ -311,9 +479,90 @@ export default class Sound extends EventEmitter {
             return
         }
 
-        const soundFolder = this.debug.panel.addFolder({
-            title: '🎤 Microphone Debug',
+        // ===== MUSIC PLAYER FOLDER =====
+        const musicFolder = this.debug.panel.addFolder({
+            title: '🎵 Music Player',
             expanded: true
+        })
+
+        // File input for loading music
+        const fileInput = document.createElement('input')
+        fileInput.type = 'file'
+        fileInput.accept = 'audio/*'
+        fileInput.style.display = 'none'
+        document.body.appendChild(fileInput)
+
+        fileInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0]
+            if (file) {
+                const success = await this.loadMusicFile(file)
+                if (success) {
+                    console.log('✅ Music file loaded:', file.name)
+                }
+            }
+        })
+
+        musicFolder.addButton({
+            title: '📁 Load Music File'
+        }).on('click', () => {
+            fileInput.click()
+        })
+
+        const musicControls = {
+            mode: this.audioMode,
+            volume: 50,
+            isPlaying: false
+        }
+
+        musicFolder.addBinding(musicControls, 'mode', {
+            label: 'Audio Source',
+            options: {
+                'Microphone': 'microphone',
+                'Music': 'music'
+            }
+        }).on('change', (ev) => {
+            if (ev.value === 'microphone') {
+                this.switchToMicrophone()
+            } else if (ev.value === 'music') {
+                this.switchToMusic()
+            }
+            musicControls.mode = ev.value
+        })
+
+        musicFolder.addButton({
+            title: '▶️ Play Music'
+        }).on('click', () => {
+            if (this.audioMode === 'music') {
+                this.playMusic()
+                musicControls.isPlaying = true
+            } else {
+                this.switchToMusic()
+                musicControls.mode = 'music'
+            }
+        })
+
+        musicFolder.addButton({
+            title: '⏸️ Pause Music'
+        }).on('click', () => {
+            this.pauseMusic()
+            musicControls.isPlaying = false
+        })
+
+        musicFolder.addBinding(musicControls, 'volume', {
+            label: 'Music Volume',
+            min: 0,
+            max: 100,
+            step: 1
+        }).on('change', (ev) => {
+            if (this.musicGainNode) {
+                this.musicGainNode.gain.value = ev.value / 100
+            }
+        })
+
+        // ===== MICROPHONE DEBUG FOLDER =====
+        const soundFolder = this.debug.panel.addFolder({
+            title: '🎤 Microphone & Audio Debug',
+            expanded: false
         })
 
         const debugData = {
